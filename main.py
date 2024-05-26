@@ -1,6 +1,34 @@
 import numpy as np
-import random 
+import pandas as pd
+import random
 import matplotlib.pyplot as plt
+
+"""
+Estrutura do Fenotipo: [[],[],[],...,[]] - Matriz de zeros representando o centro de convencoes, onde houver 1 sera o PA.
+Estrutura do Genotipo: [(x1, y1), (x2, y2), ..., (xn, yn)]
+"""
+
+"""
+Carregando os dados do problema
+"""
+df_clientes = pd.read_csv('clientes.csv', header=None, names=['x', 'y', 'bandwidth'])
+
+'''
+Mostra a distribuição dos clientes
+'''
+plt.figure(figsize=(8,8))
+plt.scatter(df_clientes['x'], df_clientes['y'], alpha=0.8)
+plt.title('Distribuição Espacial dos Clientes')
+plt.xlabel('Posição X')
+plt.ylabel('Posição Y')
+plt.grid(True, which='major', linestyle='-', linewidth=0.5)
+plt.axis([0, 400, 0, 400])
+plt.xticks(range(0, 401, 25))
+plt.yticks(range(0, 401, 25))
+plt.minorticks_on()
+plt.grid(True, which='minor', linestyle=':', linewidth=0.5) 
+plt.show()
+plt.close()
 
 class Solution:
     def __init__(self, somatorio, media, maximo):
@@ -12,10 +40,11 @@ class Solution:
         print(f"Sum: {self.somatorio}\nAverage: {self.media}\nMax: {self.maximo}")
 
 class Individuo:
-    def __init__(self, fenotipo, genotipo):
+    def __init__(self, fenotipo, atribuicoes = None):
         self.fenotipo = fenotipo
         self.genotipo = genotipo
         self.fitness = fitness(self.genotipo)
+        self.atribuicoes = atribuicoes if atribuicoes is not None else gerarAtribuicoes(self.genotipo)
 
 def fitness(genotipo):
     pass
@@ -48,10 +77,22 @@ def selecaoPorTorneio(populacao, k=3):
     return melhor
 
 def fenotipoToGenotipo(fenotipo):
-    pass
+    genotipo = np.zeros((400, 400), dtype=int)
+ 
+    for coord in fenotipo:
+        genotipo[coord[0], coord[1]] = 1
+
+    return genotipo
 
 def genotipoToFenotipo(genotipo):
-    pass
+    fenotipo = []
+    
+    for index_linha, linha in enumerate(genotipo):
+        for index_coluna, valor in enumerate(linha):
+            if valor == 1: 
+                fenotipo.append((index_linha, index_coluna))
+                
+    return fenotipo
 
 """
 Seleciona o melhor indivíduo da população
@@ -64,13 +105,75 @@ def getMelhorIndividuo(populacao):
         if (individuo.fitness > melhor_fitness):
             melhor_individuo = individuo
             
-    return melhor_individuo
+    return melhor_individuo  
 
+"""
+Gera fenotipo inicial
+"""
 def getInitialFenotipo():
-    pass
+    fenotipo = np.zeros((400,400))
+    fenotipo_coordenadas = []
+    atribuicoes = []
 
-def fenotipoToGenotipo(fenotipo):
-    pass
+    # Distribuir PAs aleatoriamente na malha de 400x400 metros
+    grid_points_x = np.arange(0, 400 + 1, 5)
+    grid_points_y = np.arange(0, 400 + 1, 5)
+    for _ in range(max_pas):
+        x = np.random.choice(grid_points_x)
+        y = np.random.choice(grid_points_y)
+        fenotipo[x][y] = 1
+        fenotipo_coordenadas.append((x, y))
+
+    # Encontrar o PA mais próximo que pode acomodar o cliente sem exceder a capacidade
+    pa_largura_banda_usada = {i: 0 for i in range(max_pas)}
+    for _, cliente in df_clientes.iterrows():
+        atribuido = False
+        distancias = [np.sqrt((pa[0] - cliente['x'])**2 + (pa[1] - cliente['y'])**2) for pa in fenotipo_coordenadas]
+        possiveis_pas = sorted(range(distancias), key=lambda k: distancias[k])
+
+        for pa_index in possiveis_pas:
+            if (distancias[pa_index] <= max_distancia and 
+                pa_largura_banda_usada[pa_index] + cliente['bandwidth'] <= max_capacidade_pa):
+                atribuicoes.append(pa_index)
+                pa_largura_banda_usada[pa_index] += cliente['bandwidth']
+                atribuido = True
+                break
+            
+        if not atribuido:
+            atribuicoes.append(possiveis_pas[0])
+
+    return fenotipo, atribuicoes
+
+"""
+Faz a atribuição de PA's a clientes
+"""
+def gerarAtribuicoes(fenotipo):
+    atribuicoes = []
+    fenotipo_coordenadas = []
+
+    for i in range(fenotipo.shape[0]):
+        for j in range(fenotipo.shape[1]):
+            if (fenotipo[i][j] == 1):
+                fenotipo_coordenadas.append((i, j))
+
+    pa_largura_banda_usada = {i: 0 for i in range(max_pas)}
+    for _, cliente in df_clientes.iterrows():
+        atribuido = False
+        distancias = [np.sqrt((pa[0] - cliente['x'])**2 + (pa[1] - cliente['y'])**2) for pa in fenotipo_coordenadas]
+        possiveis_pas = sorted(range(distancias), key=lambda k: distancias[k])
+
+        for pa_index in possiveis_pas:
+            if (distancias[pa_index] <= max_distancia and 
+                pa_largura_banda_usada[pa_index] + cliente['bandwidth'] <= max_capacidade_pa):
+                atribuicoes.append(pa_index)
+                pa_largura_banda_usada[pa_index] += cliente['bandwidth']
+                atribuido = True
+                break
+            
+        if not atribuido:
+            atribuicoes.append(possiveis_pas[0])
+
+    return atribuicoes
 
 """
 Definições iniciais
@@ -78,9 +181,12 @@ Definições iniciais
 geracoes = 1000
 tam_populacao = 4
 taxa_mutacao = 0.05
+max_pas = 30
+max_distancia = 85 # Máxima distância entre um PA e o cliente servido por esse PA
+max_capacidade_pa = 54
 populacao_inicial = []
 for x in range(tam_populacao):
-    fenotipo = getInitialFenotipo()
+    fenotipo, atribuicoes = getInitialFenotipo()
     genotipo = fenotipoToGenotipo(fenotipo)
     populacao_inicial.append(Individuo(fenotipo, genotipo))
 
@@ -115,7 +221,6 @@ for _ in range(geracoes):
         nova_populacao.extend([filho1, filho2])
         
     populacao = nova_populacao
-    solucao = Solution
     solucao = Solution(sum(ind.fitness for ind in populacao), 0, max(ind.fitness for ind in populacao))
     solucao.media = solucao.somatorio / len(populacao)
     solutions.append(solucao)    
@@ -130,5 +235,5 @@ plt.ylabel('Somatório')
 plt.grid(True)
 plt.show()
 
-# Visualização dá última solução
+# Visualização dá última melhor solução da população
 print(f"Solução final:\n {getMelhorIndividuo(populacao).fenotipo}")
